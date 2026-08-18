@@ -3,8 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telegram Web Clone</title>
+    <title>Telegram Cloud Clone</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- SDKs de Firebase -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, arrayUnion, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // CONFIGURACIÓN DE FIREBASE CON TU API KEY
+        const firebaseConfig = {
+            apiKey: "AIzaSyADAmHAnl6ZrJUylutygAbXxcqBqZVNEuQ",
+            authDomain: "whiomsj.firebaseapp.com",
+            projectId: "whiomsj",
+            storageBucket: "whiomsj.firebasestorage.app",
+            messagingSenderId: "18414928663",
+            appId: "1:18414928663:web:04f4518aec7fef64882d52"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Exponer funciones globales para la app
+        window.fb = { db, collection, doc, setDoc, getDoc, updateDoc, arrayUnion, onSnapshot, getDocs };
+        window.dispatchEvent(new Event('firebase-ready'));
+    </script>
+
     <style>
         :root { --bg-sidebar: #17212b; --bg-chat: #0e1621; --accent: #2b5278; --text: #f5f5f5; --text-sec: #829ab1; --border: #1c2733; }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
@@ -128,19 +152,9 @@
     </div>
 
     <script>
-        let users = JSON.parse(localStorage.getItem('tg_users')) || [];
-        let messagesDB = JSON.parse(localStorage.getItem('tg_messages')) || {};
         let currentUsername = null;
         let activeContactUsername = null;
-
-        function saveData() {
-            localStorage.setItem('tg_users', JSON.stringify(users));
-            localStorage.setItem('tg_messages', JSON.stringify(messagesDB));
-        }
-
-        function getChatKey(userA, userB) {
-            return [userA, userB].sort().join('_');
-        }
+        let unsubscribeMessages = null;
 
         function showScreen(screenId) {
             document.getElementById('registerScreen').classList.add('hidden');
@@ -149,7 +163,11 @@
             document.getElementById(screenId).classList.remove('hidden');
         }
 
-        function registerUser() {
+        window.addEventListener('firebase-ready', () => {
+            // Firebase listo
+        });
+
+        async function registerUser() {
             const user = document.getElementById('regUser').value.trim();
             const pass = document.getElementById('regPass').value;
             const errorEl = document.getElementById('regError');
@@ -162,47 +180,67 @@
                 errorEl.textContent = "La clave debe tener al menos 8 dígitos.";
                 return;
             }
-            if (users.some(u => u.username === user)) {
+
+            const { db, doc, getDoc, setDoc } = window.fb;
+            const userRef = doc(db, "users", user);
+            const userSnap = await getDoc(userRef);
+
+            if (userSnap.exists()) {
                 errorEl.textContent = "El nombre de usuario ya está registrado.";
                 return;
             }
 
-            users.push({ username: user, password: pass, contacts: [] });
-            saveData();
+            await setDoc(userRef, { username: user, password: pass, contacts: [] });
             alert("¡Registro exitoso! Ahora puedes iniciar sesión.");
             showScreen('loginScreen');
         }
 
-        function loginUser() {
+        async function loginUser() {
             const user = document.getElementById('loginUser').value.trim();
             const pass = document.getElementById('loginPass').value;
             const errorEl = document.getElementById('loginError');
 
-            const found = users.find(u => u.username === user && u.password === pass);
-            if (!found) {
+            const { db, doc, getDoc } = window.fb;
+            const userRef = doc(db, "users", user);
+            const userSnap = await getDoc(userRef);
+
+            if (!userSnap.exists() || userSnap.data().password !== pass) {
                 errorEl.textContent = "Usuario o clave incorrectos.";
                 return;
             }
 
-            currentUsername = found.username;
+            currentUsername = user;
             document.getElementById('currentUserLabel').textContent = `@${currentUsername}`;
             showScreen('appScreen');
-            renderChatList();
+            loadUserData();
         }
 
         function logout() {
             currentUsername = null;
             activeContactUsername = null;
+            if (unsubscribeMessages) unsubscribeMessages();
             document.getElementById('loginUser').value = '';
             document.getElementById('loginPass').value = '';
             showScreen('loginScreen');
         }
 
-        function getCurrentUserObj() {
-            return users.find(u => u.username === currentUsername);
+        async function loadUserData() {
+            const { db, doc, onSnapshot } = window.fb;
+            onSnapshot(doc(db, "users", currentUsername), (docSnap) => {
+                if (docSnap.exists()) {
+                    window.currentUserData = docSnap.data();
+                    renderChatList();
+                    if (activeContactUsername) {
+                        const contact = window.currentUserData.contacts.find(c => c.username === activeContactUsername);
+                        if (contact) {
+                            document.getElementById('chatTitle').textContent = contact.customName;
+                        }
+                    }
+                }
+            });
         }
 
-        function addContactPrompt() {
+        async function addContactPrompt() {
             const contactUsername = prompt("Ingresa el nombre de usuario exacto a agregar:");
             if (!contactUsername) return;
 
@@ -211,54 +249,55 @@
                 return;
             }
 
-            const targetUser = users.find(u => u.username === contactUsername);
-            if (!targetUser) {
+            const { db, doc, getDoc, updateDoc, arrayUnion } = window.fb;
+            const targetRef = doc(db, "users", contactUsername);
+            const targetSnap = await getDoc(targetRef);
+
+            if (!targetSnap.exists()) {
                 alert("El usuario no existe en el sistema.");
                 return;
             }
 
-            const userObj = getCurrentUserObj();
-            if (userObj.contacts.some(c => c.username === contactUsername)) {
+            if (window.currentUserData.contacts.some(c => c.username === contactUsername)) {
                 alert("Este usuario ya está en tus contactos.");
                 return;
             }
 
-            userObj.contacts.push({
-                username: targetUser.username,
-                customName: targetUser.username
+            const userRef = doc(db, "users", currentUsername);
+            await updateDoc(userRef, {
+                contacts: arrayUnion({ username: contactUsername, customName: contactUsername })
             });
-
-            saveData();
-            renderChatList();
         }
 
-        function renameContact(username, event) {
+        async function renameContact(username, event) {
             event.stopPropagation();
-            const userObj = getCurrentUserObj();
-            const contact = userObj.contacts.find(c => c.username === username);
+            const contact = window.currentUserData.contacts.find(c => c.username === username);
             if (!contact) return;
 
             const newName = prompt(`Cambiar nombre para el contacto @${username}:`, contact.customName);
             if (newName && newName.trim() !== "") {
-                contact.customName = newName.trim();
-                saveData();
-                renderChatList();
-                if (activeContactUsername === username) {
-                    document.getElementById('chatTitle').textContent = contact.customName;
-                }
+                const updatedContacts = window.currentUserData.contacts.map(c => {
+                    if (c.username === username) {
+                        return { ...c, customName: newName.trim() };
+                    }
+                    return c;
+                });
+
+                const { db, doc, updateDoc } = window.fb;
+                await updateDoc(doc(db, "users", currentUsername), { contacts: updatedContacts });
             }
         }
 
         function renderChatList() {
-            const userObj = getCurrentUserObj();
             const list = document.getElementById('chatList');
+            const contacts = window.currentUserData.contacts || [];
             
-            if (userObj.contacts.length === 0) {
+            if (contacts.length === 0) {
                 list.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--text-sec); font-size: 0.9rem;">No tienes contactos. Haz clic en el icono superior para agregar uno.</div>`;
                 return;
             }
 
-            list.innerHTML = userObj.contacts.map(c => `
+            list.innerHTML = contacts.map(c => `
                 <div class="chat-item" onclick="openChat('${c.username}')">
                     <div class="chat-item-info">
                         <div style="width:40px; height:40px; background:#5288c1; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;">${c.customName[0].toUpperCase()}</div>
@@ -276,8 +315,7 @@
 
         function openChat(username) {
             activeContactUsername = username;
-            const userObj = getCurrentUserObj();
-            const contact = userObj.contacts.find(c => c.username === username);
+            const contact = window.currentUserData.contacts.find(c => c.username === username);
             
             document.getElementById('chatTitle').textContent = contact.customName;
             document.getElementById('chatAvatar').textContent = contact.customName[0].toUpperCase();
@@ -287,7 +325,7 @@
                 document.getElementById('chatArea').style.display = 'flex';
             }
 
-            renderMessages();
+            listenToMessages();
             renderChatList();
         }
 
@@ -301,79 +339,55 @@
             sendBtn.style.display = input.value.trim().length > 0 ? 'block' : 'none';
         }
 
-        function sendMessage() {
+        async function sendMessage() {
             const input = document.getElementById('msgInput');
             const text = input.value.trim();
             if (!text || !activeContactUsername) return;
 
-            const chatKey = getChatKey(currentUsername, activeContactUsername);
-            if (!messagesDB[chatKey]) {
-                messagesDB[chatKey] = [];
+            const chatKey = [currentUsername, activeContactUsername].sort().join('_');
+            const { db, doc, getDoc, setDoc, updateDoc, arrayUnion } = window.fb;
+            const chatRef = doc(db, "chats", chatKey);
+            const chatSnap = await getDoc(chatRef);
+
+            const newMsg = { sender: currentUsername, type: 'text', content: text, timestamp: Date.now() };
+
+            if (!chatSnap.exists()) {
+                await setDoc(chatRef, { messages: [newMsg] });
+            } else {
+                await updateDoc(chatRef, { messages: arrayUnion(newMsg) });
             }
 
-            messagesDB[chatKey].push({
-                sender: currentUsername,
-                type: 'text',
-                content: text
-            });
-
-            saveData();
             input.value = '';
             handleInputState();
-            renderMessages();
         }
 
-        function handleFileUpload(event) {
-            const file = event.target.files[0];
-            if (!file || !activeContactUsername) return;
+        function listenToMessages() {
+            if (unsubscribeMessages) unsubscribeMessages();
 
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const chatKey = getChatKey(currentUsername, activeContactUsername);
-                if (!messagesDB[chatKey]) {
-                    messagesDB[chatKey] = [];
+            const chatKey = [currentUsername, activeContactUsername].sort().join('_');
+            const { db, doc, onSnapshot } = window.fb;
+
+            unsubscribeMessages = onSnapshot(doc(db, "chats", chatKey), (docSnap) => {
+                const container = document.getElementById('msgContainer');
+                if (!docSnap.exists() || !docSnap.data().messages) {
+                    container.innerHTML = `<div style="margin: auto; color: var(--text-sec);">Envía un mensaje para iniciar la conversación</div>`;
+                    return;
                 }
 
-                let content = e.target.result;
-                let type = file.type.startsWith('image/') ? 'image' : 'text';
-                if (type === 'text') {
-                    content = `📁 Archivo: ${file.name}`;
-                }
-
-                messagesDB[chatKey].push({
-                    sender: currentUsername,
-                    type: type,
-                    content: content
-                });
-
-                saveData();
-                renderMessages();
-                event.target.value = '';
-            };
-            reader.readAsDataURL(file);
-        }
-
-        function renderMessages() {
-            const container = document.getElementById('msgContainer');
-            const chatKey = getChatKey(currentUsername, activeContactUsername);
-            const messages = messagesDB[chatKey] || [];
-            
-            if (messages.length === 0) {
-                container.innerHTML = `<div style="margin: auto; color: var(--text-sec);">Envía un mensaje para iniciar la conversación</div>`;
-                return;
-            }
-
-            container.innerHTML = messages.map(m => {
-                const isMe = m.sender === currentUsername;
-                const bubbleClass = isMe ? 'msg me' : 'msg';
-                if (m.type === 'image') {
-                    return `<div class="${bubbleClass}"><img src="${m.content}" alt="Imagen"></div>`;
-                } else {
-                    return `<div class="${bubbleClass}">${m.content}</div>`;
-                }
-            }).join('');
-            
-            container.scrollTop = container.scrollHeight;
+                const messages = docSnap.data().messages.sort((a, b) => a.timestamp - b.timestamp);
+                
+                container.innerHTML = messages.map(m => {
+                    const isMe = m.sender === currentUsername;
+                    const bubbleClass = isMe ? 'msg me' : 'msg';
+                    if (m.type === 'image') {
+                        return `<div class="${bubbleClass}"><img src="${m.content}" alt="Imagen"></div>`;
+                    } else {
+                        return `<div class="${bubbleClass}">${m.content}</div>`;
+                    }
+                }).join('');
+                
+                container.scrollTop = container.scrollHeight;
+            });
         }
     </script>
 </body>
