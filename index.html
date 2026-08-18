@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Web Clone</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --bg-sidebar: #17212b; --bg-chat: #0e1621; --accent: #2b5278; --text: #f5f5f5; --text-sec: #829ab1; --border: #1c2733; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+        body { height: 100vh; background-color: var(--bg-chat); color: var(--text); overflow: hidden; }
+        
+        .screen { width: 100vw; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .hidden { display: none !important; }
+
+        /* Pantallas de Autenticación */
+        .auth-card { background: var(--bg-sidebar); padding: 30px; border-radius: 12px; width: 320px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .auth-card h2 { text-align: center; margin-bottom: 5px; }
+        .auth-input { width: 100%; padding: 10px 15px; background: var(--bg-chat); border: 1px solid var(--border); border-radius: 8px; color: white; outline: none; font-size: 1rem; }
+        .auth-btn { width: 100%; padding: 10px; background: var(--accent); border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; }
+        .auth-btn:hover { background: #356395; }
+        .auth-link { text-align: center; font-size: 0.85rem; color: var(--text-sec); cursor: pointer; }
+        .auth-link:hover { color: white; }
+        .error-msg { color: #ff5252; font-size: 0.8rem; text-align: center; }
+
+        /* Pantalla de Aplicación Principal */
+        .app-screen { width: 100vw; height: 100vh; display: flex; flex-direction: row; }
+        
+        .sidebar { width: 350px; background-color: var(--bg-sidebar); display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+        .sidebar-header { padding: 15px; display: flex; justify-content: space-between; align-items: center; background: var(--bg-sidebar); border-bottom: 1px solid var(--border); }
+        
+        .chat-list { flex: 1; overflow-y: auto; }
+        .chat-item { padding: 15px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid var(--border); }
+        .chat-item:hover { background: #202b36; }
+        .chat-item-info { display: flex; align-items: center; gap: 12px; flex: 1; }
+
+        .contact-actions { display: flex; gap: 10px; }
+        .action-icon-btn { background: transparent; border: none; color: var(--text-sec); cursor: pointer; font-size: 1rem; }
+        .action-icon-btn:hover { color: white; }
+
+        /* Pantalla de Chat Individual */
+        .chat-area { flex: 1; display: flex; flex-direction: column; background-color: var(--bg-chat); }
+        .topbar { background: var(--bg-sidebar); padding: 15px; display: flex; align-items: center; gap: 15px; }
+        .back-btn { cursor: pointer; font-size: 1.2rem; color: var(--text-sec); display: none; }
+        
+        .messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .msg { padding: 8px 12px; border-radius: 10px; max-width: 80%; background: #182533; align-self: flex-start; word-break: break-word; }
+        .msg.me { background: var(--accent); align-self: flex-end; }
+        .msg img { max-width: 100%; border-radius: 8px; margin-top: 5px; display: block; }
+
+        .input-area { background: var(--bg-sidebar); padding: 12px 15px; display: flex; align-items: center; gap: 15px; }
+        .input-area i { font-size: 1.2rem; color: var(--text-sec); cursor: pointer; }
+        input[type="text"], input[type="password"] { flex: 1; background: transparent; border: none; color: white; outline: none; font-size: 1rem; }
+        
+        .right-actions { display: flex; align-items: center; gap: 15px; }
+        .mic-btn, .send-btn { background: transparent; border: none; color: var(--text-sec); font-size: 1.2rem; cursor: pointer; }
+        .send-btn { display: none; color: #5288c1; font-size: 1.3rem; }
+
+        @media (max-width: 768px) {
+            .sidebar { width: 100vw; }
+            .chat-area { display: none; width: 100vw; position: absolute; top: 0; left: 0; height: 100vh; z-index: 10; }
+            .back-btn { display: block; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- REGISTRO -->
+    <div id="registerScreen" class="screen">
+        <div class="auth-card">
+            <h2>Telegram - Registro</h2>
+            <div id="regError" class="error-msg"></div>
+            <input type="text" id="regUser" class="auth-input" placeholder="Nombre de usuario">
+            <input type="password" id="regPass" class="auth-input" placeholder="Clave (mínimo 8 dígitos)">
+            <button class="auth-btn" onclick="registerUser()">Registrarse</button>
+            <div class="auth-link" onclick="showScreen('loginScreen')">¿Ya tienes cuenta? Inicia sesión</div>
+        </div>
+    </div>
+
+    <!-- LOGIN -->
+    <div id="loginScreen" class="screen hidden">
+        <div class="auth-card">
+            <h2>Telegram - Ingresar</h2>
+            <div id="loginError" class="error-msg"></div>
+            <input type="text" id="loginUser" class="auth-input" placeholder="Nombre de usuario">
+            <input type="password" id="loginPass" class="auth-input" placeholder="Clave">
+            <button class="auth-btn" onclick="loginUser()">Entrar</button>
+            <div class="auth-link" onclick="showScreen('registerScreen')">¿No tienes cuenta? Regístrate</div>
+        </div>
+    </div>
+
+    <!-- APLICACIÓN PRINCIPAL -->
+    <div id="appScreen" class="screen hidden app-screen" style="flex-direction: row; justify-content: flex-start;">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <span id="currentUserLabel" style="font-weight: bold;"></span>
+                <div style="display: flex; gap: 15px;">
+                    <i class="fa-solid fa-user-plus" title="Agregar contacto" onclick="addContactPrompt()" style="cursor: pointer; color: var(--text-sec);"></i>
+                    <i class="fa-solid fa-right-from-bracket" title="Cerrar sesión" onclick="logout()" style="cursor: pointer; color: var(--text-sec);"></i>
+                </div>
+            </div>
+            <div class="chat-list" id="chatList"></div>
+        </div>
+
+        <div class="chat-area" id="chatArea">
+            <div class="topbar">
+                <i class="fa-solid fa-arrow-left back-btn" onclick="closeChatMobile()"></i>
+                <div style="width:40px; height:40px; background:#5288c1; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;" id="chatAvatar">?</div>
+                <span id="chatTitle" style="font-weight: 600;">Selecciona un chat</span>
+            </div>
+            
+            <div class="messages" id="msgContainer">
+                <div style="margin: auto; color: var(--text-sec);">Selecciona un contacto para chatear</div>
+            </div>
+            
+            <div class="input-area" id="inputArea" style="display: none;">
+                <input type="file" id="fileInput" style="display: none;" accept="image/*,.pdf,.doc" onchange="handleFileUpload(event)">
+                <i class="fa-solid fa-paperclip" onclick="document.getElementById('fileInput').click();" title="Adjuntar"></i>
+                
+                <input type="text" id="msgInput" placeholder="Escribe un mensaje..." oninput="handleInputState()">
+                
+                <div class="right-actions">
+                    <button class="mic-btn" onclick="alert('Grabando nota de voz...')"><i class="fa-solid fa-microphone"></i></button>
+                    <button class="send-btn" id="sendBtn" onclick="sendMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let users = JSON.parse(localStorage.getItem('tg_users')) || [];
+        let messagesDB = JSON.parse(localStorage.getItem('tg_messages')) || {};
+        let currentUsername = null;
+        let activeContactUsername = null;
+
+        function saveData() {
+            localStorage.setItem('tg_users', JSON.stringify(users));
+            localStorage.setItem('tg_messages', JSON.stringify(messagesDB));
+        }
+
+        function getChatKey(userA, userB) {
+            return [userA, userB].sort().join('_');
+        }
+
+        function showScreen(screenId) {
+            document.getElementById('registerScreen').classList.add('hidden');
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('appScreen').classList.add('hidden');
+            document.getElementById(screenId).classList.remove('hidden');
+        }
+
+        function registerUser() {
+            const user = document.getElementById('regUser').value.trim();
+            const pass = document.getElementById('regPass').value;
+            const errorEl = document.getElementById('regError');
+
+            if (!user || !pass) {
+                errorEl.textContent = "Todos los campos son obligatorios.";
+                return;
+            }
+            if (pass.length < 8) {
+                errorEl.textContent = "La clave debe tener al menos 8 dígitos.";
+                return;
+            }
+            if (users.some(u => u.username === user)) {
+                errorEl.textContent = "El nombre de usuario ya está registrado.";
+                return;
+            }
+
+            users.push({ username: user, password: pass, contacts: [] });
+            saveData();
+            alert("¡Registro exitoso! Ahora puedes iniciar sesión.");
+            showScreen('loginScreen');
+        }
+
+        function loginUser() {
+            const user = document.getElementById('loginUser').value.trim();
+            const pass = document.getElementById('loginPass').value;
+            const errorEl = document.getElementById('loginError');
+
+            const found = users.find(u => u.username === user && u.password === pass);
+            if (!found) {
+                errorEl.textContent = "Usuario o clave incorrectos.";
+                return;
+            }
+
+            currentUsername = found.username;
+            document.getElementById('currentUserLabel').textContent = `@${currentUsername}`;
+            showScreen('appScreen');
+            renderChatList();
+        }
+
+        function logout() {
+            currentUsername = null;
+            activeContactUsername = null;
+            document.getElementById('loginUser').value = '';
+            document.getElementById('loginPass').value = '';
+            showScreen('loginScreen');
+        }
+
+        function getCurrentUserObj() {
+            return users.find(u => u.username === currentUsername);
+        }
+
+        function addContactPrompt() {
+            const contactUsername = prompt("Ingresa el nombre de usuario exacto a agregar:");
+            if (!contactUsername) return;
+
+            if (contactUsername === currentUsername) {
+                alert("No puedes agregarte a ti mismo.");
+                return;
+            }
+
+            const targetUser = users.find(u => u.username === contactUsername);
+            if (!targetUser) {
+                alert("El usuario no existe en el sistema.");
+                return;
+            }
+
+            const userObj = getCurrentUserObj();
+            if (userObj.contacts.some(c => c.username === contactUsername)) {
+                alert("Este usuario ya está en tus contactos.");
+                return;
+            }
+
+            userObj.contacts.push({
+                username: targetUser.username,
+                customName: targetUser.username
+            });
+
+            saveData();
+            renderChatList();
+        }
+
+        function renameContact(username, event) {
+            event.stopPropagation();
+            const userObj = getCurrentUserObj();
+            const contact = userObj.contacts.find(c => c.username === username);
+            if (!contact) return;
+
+            const newName = prompt(`Cambiar nombre para el contacto @${username}:`, contact.customName);
+            if (newName && newName.trim() !== "") {
+                contact.customName = newName.trim();
+                saveData();
+                renderChatList();
+                if (activeContactUsername === username) {
+                    document.getElementById('chatTitle').textContent = contact.customName;
+                }
+            }
+        }
+
+        function renderChatList() {
+            const userObj = getCurrentUserObj();
+            const list = document.getElementById('chatList');
+            
+            if (userObj.contacts.length === 0) {
+                list.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--text-sec); font-size: 0.9rem;">No tienes contactos. Haz clic en el icono superior para agregar uno.</div>`;
+                return;
+            }
+
+            list.innerHTML = userObj.contacts.map(c => `
+                <div class="chat-item" onclick="openChat('${c.username}')">
+                    <div class="chat-item-info">
+                        <div style="width:40px; height:40px; background:#5288c1; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;">${c.customName[0].toUpperCase()}</div>
+                        <div>
+                            <div style="font-weight: 600;">${c.customName}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-sec);">@${c.username}</div>
+                        </div>
+                    </div>
+                    <div class="contact-actions">
+                        <button class="action-icon-btn" onclick="renameContact('${c.username}', event)" title="Cambiar nombre"><i class="fa-solid fa-pen"></i></button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openChat(username) {
+            activeContactUsername = username;
+            const userObj = getCurrentUserObj();
+            const contact = userObj.contacts.find(c => c.username === username);
+            
+            document.getElementById('chatTitle').textContent = contact.customName;
+            document.getElementById('chatAvatar').textContent = contact.customName[0].toUpperCase();
+            document.getElementById('inputArea').style.display = 'flex';
+            
+            if (window.innerWidth <= 768) {
+                document.getElementById('chatArea').style.display = 'flex';
+            }
+
+            renderMessages();
+            renderChatList();
+        }
+
+        function closeChatMobile() {
+            document.getElementById('chatArea').style.display = 'none';
+        }
+
+        function handleInputState() {
+            const input = document.getElementById('msgInput');
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.style.display = input.value.trim().length > 0 ? 'block' : 'none';
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('msgInput');
+            const text = input.value.trim();
+            if (!text || !activeContactUsername) return;
+
+            const chatKey = getChatKey(currentUsername, activeContactUsername);
+            if (!messagesDB[chatKey]) {
+                messagesDB[chatKey] = [];
+            }
+
+            messagesDB[chatKey].push({
+                sender: currentUsername,
+                type: 'text',
+                content: text
+            });
+
+            saveData();
+            input.value = '';
+            handleInputState();
+            renderMessages();
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file || !activeContactUsername) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const chatKey = getChatKey(currentUsername, activeContactUsername);
+                if (!messagesDB[chatKey]) {
+                    messagesDB[chatKey] = [];
+                }
+
+                let content = e.target.result;
+                let type = file.type.startsWith('image/') ? 'image' : 'text';
+                if (type === 'text') {
+                    content = `📁 Archivo: ${file.name}`;
+                }
+
+                messagesDB[chatKey].push({
+                    sender: currentUsername,
+                    type: type,
+                    content: content
+                });
+
+                saveData();
+                renderMessages();
+                event.target.value = '';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function renderMessages() {
+            const container = document.getElementById('msgContainer');
+            const chatKey = getChatKey(currentUsername, activeContactUsername);
+            const messages = messagesDB[chatKey] || [];
+            
+            if (messages.length === 0) {
+                container.innerHTML = `<div style="margin: auto; color: var(--text-sec);">Envía un mensaje para iniciar la conversación</div>`;
+                return;
+            }
+
+            container.innerHTML = messages.map(m => {
+                const isMe = m.sender === currentUsername;
+                const bubbleClass = isMe ? 'msg me' : 'msg';
+                if (m.type === 'image') {
+                    return `<div class="${bubbleClass}"><img src="${m.content}" alt="Imagen"></div>`;
+                } else {
+                    return `<div class="${bubbleClass}">${m.content}</div>`;
+                }
+            }).join('');
+            
+            container.scrollTop = container.scrollHeight;
+        }
+    </script>
+</body>
+</html>
